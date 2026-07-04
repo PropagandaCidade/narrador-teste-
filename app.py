@@ -176,14 +176,16 @@ def generate_audio_endpoint():
         payload["safetySettings"] = safety
 
         if debug:
+            payload_compact = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            curl_cmd = f'curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/{model_fullname}:generateContent?key=SUA_CHAVE_AQUI" -H "Content-Type: application/json" -d \'{payload_compact}\''
             return jsonify({
                 "debug": True,
                 "mode": mode,
                 "model": model_fullname,
                 "voice": voice,
                 "payload": payload,
-                "payload_json": json.dumps(payload, indent=2, ensure_ascii=False),
-                "instrucao": "Copie o 'payload' acima e cole no Google AI Studio (ou use curl com o payload + sua chave) para comparar o comportamento com o worker."
+                "curl": curl_cmd,
+                "instrucao": "Copie o comando 'curl' acima, troque SUA_CHAVE_AQUI pela sua API key do Gemini, e execute no terminal. Compare o resultado com o que o worker retorna."
             })
 
         api_key = data.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
