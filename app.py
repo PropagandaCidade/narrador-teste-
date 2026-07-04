@@ -24,17 +24,18 @@ def _load_rules():
         resp = httpx.get(FONEMAS_API_URL, timeout=10.0)
         if resp.status_code == 200:
             data = resp.json()
-            gold = data.get("gold_rules", {})
+            instructions = data.get("pronunciation_instructions", {})
+            if not instructions:
+                instructions = data.get("gold_rules", {})
             pr_map = {}
-            for key, rule in gold.items():
-                if isinstance(rule, dict) and "replace" in rule:
-                    searches = rule.get("search", [])
-                    replacement = rule["replace"]
+            for word, instruction in instructions.items():
+                if isinstance(instruction, str):
+                    pr_map[word] = instruction
+                elif isinstance(instruction, dict) and "replace" in instruction:
+                    searches = instruction.get("search", [word])
                     for s in searches:
                         if s:
-                            pr_map[s] = replacement
-                elif isinstance(rule, str):
-                    pr_map[key] = rule
+                            pr_map[s] = instruction["replace"]
             _rules_cache = pr_map
             logger.info(f"Regras foneticas carregadas: {len(pr_map)} entradas")
             return _rules_cache
@@ -45,12 +46,16 @@ def _load_rules():
 
 def _apply_pronunciation_guide(text):
     rules = _load_rules()
-    for word, replacement in rules.items():
+    instructions = []
+    for word, instruction in rules.items():
         if " " in word:
             continue
         pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
-        text = pattern.sub(replacement, text)
-    return text
+        if pattern.search(text):
+            instructions.append(f"Importante: {instruction}")
+    if not instructions:
+        return text
+    return f"{' '.join(instructions)} {text}"
 
 
 @app.route('/')
