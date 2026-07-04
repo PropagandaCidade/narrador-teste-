@@ -10,7 +10,7 @@ app = Flask(__name__)
 CORS(app, expose_headers=['X-Model-Used'])
 
 PRONUNCIATION_MAP = {
-    "IDE": "Leia a palavra IDE como 'ide', com acento no I.",
+    "IDE": "Importante: ignore a palavra IDEIA. A marca IDE se pronuncia IDE, com E aberto e tonica no I. Nunca leia como IDEIA.",
 }
 
 
