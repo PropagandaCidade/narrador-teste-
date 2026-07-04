@@ -11,14 +11,14 @@ CORS(app, expose_headers=['X-Model-Used', 'X-Prompt-Tokens', 'X-Output-Tokens'])
 
 @app.route('/')
 def home():
-    return "Worker TTS Teste v1.1 - systemInstruction"
+    return "Worker TTS v2.0 - Minimal"
 
 @app.route('/api/generate-audio', methods=['POST'])
 def generate_audio_endpoint():
     try:
         data = request.get_json(silent=True)
         if not data:
-            return jsonify({"error": "JSON invalido ou ausente"}), 400
+            return jsonify({"error": "JSON invalido"}), 400
 
         api_key = data.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
         if not api_key:
@@ -27,8 +27,6 @@ def generate_audio_endpoint():
         text = data.get('text', '').strip()
         voice = str(data.get('voice', 'Kore')).capitalize()
         model_nickname = str(data.get('model_to_use', 'flash')).lower()
-        custom_prompt = data.get('custom_prompt', '').strip()
-        has_prompt = bool(custom_prompt)
 
         if not text or not voice:
             return jsonify({"error": "Texto e voz obrigatorios"}), 400
@@ -40,7 +38,7 @@ def generate_audio_endpoint():
         else:
             model_fullname = "gemini-2.5-flash-preview-tts"
 
-        logger.info(f"Modelo: {model_fullname} | has_prompt={has_prompt} | Texto: {len(text)} chars")
+        logger.info(f"Modelo: {model_fullname} | Texto: {len(text)} chars")
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_fullname}:generateContent?key={api_key}"
 
@@ -65,11 +63,6 @@ def generate_audio_endpoint():
             ]
         }
 
-        # Adiciona systemInstruction APENAS se custom_prompt existir
-        if has_prompt:
-            payload["systemInstruction"] = {"parts": [{"text": custom_prompt}]}
-            logger.info(f"systemInstruction adicionado ({len(custom_prompt)} chars)")
-
         with httpx.Client(timeout=120.0) as client:
             res = client.post(url, json=payload)
             res_json = res.json()
@@ -78,18 +71,11 @@ def generate_audio_endpoint():
                 err = res_json.get('error', {})
                 detail = err.get('message', json.dumps(err))
                 logger.error(f"Gemini ERRO {res.status_code}: {detail}")
-                return jsonify({
-                    "error": detail,
-                    "code": res.status_code,
-                    "payload_enviado": payload
-                }), res.status_code
+                return jsonify({"error": detail}), res.status_code
 
             parts = res_json.get('candidates', [{}])[0].get('content', {}).get('parts', [])
             if not parts or 'inlineData' not in parts[0]:
-                return jsonify({
-                    "error": "Gemini nao retornou audio inlineData",
-                    "resposta_completa": res_json
-                }), 500
+                return jsonify({"error": "Sem audio inlineData"}), 500
 
             audio_bytes = base64.b64decode(parts[0]['inlineData']['data'])
 
@@ -107,7 +93,7 @@ def generate_audio_endpoint():
         return resp
 
     except Exception as e:
-        logger.error(f"Erro no worker: {str(e)}")
+        logger.error(f"Erro: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
