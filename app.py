@@ -13,7 +13,18 @@ CORS(app, expose_headers=['X-Model-Used'])
 def home():
     return "Worker TTS v3.0 - Test Matrix"
 
-def _build_payload(text, voice, custom_prompt, mode):
+def _voice_profile(voice_name):
+    profiles = {
+        "Kore": "Kore, locutora profissional de rádio, português brasileiro, tom claro e natural",
+        "Aoede": "Aoede, locutor masculino, português brasileiro, voz firme e comercial",
+        "Puck": "Puck, locutor jovem, português brasileiro, tom descontraído e energético",
+        "Charon": "Charon, locutor masculino, português brasileiro, voz grave e imponente",
+        "Fenrir": "Fenrir, locutor masculino, português brasileiro, tom sério e institucional",
+    }
+    return profiles.get(voice_name, f"{voice_name}, locutor, português brasileiro")
+
+
+def _build_payload(text, voice, custom_prompt, mode, scene="", director_notes=""):
     if mode == 'pure':
         return {
             "contents": [{"parts": [{"text": text}]}],
@@ -133,6 +144,32 @@ def _build_payload(text, voice, custom_prompt, mode):
             }
         }
 
+    elif mode == 'voice_director':
+        profile = _voice_profile(voice)
+        sc = scene or "Narração de texto publicitário"
+        notes = director_notes or (
+            "Leia o TRANSCRIPT exatamente como escrito, palavra por palavra. "
+            "Preserve siglas, marcas, nomes próprios e números estrangeiros. "
+            "Não interprete, não reformule e não autocorrija siglas, marcas ou palavras escritas em maiúsculas."
+        )
+        final_text = (
+            f"AUDIO PROFILE\n{profile}\n\n"
+            f"THE SCENE\n{sc}\n\n"
+            f"DIRECTOR'S NOTES\n{notes}\n\n"
+            f"TRANSCRIPT\n{text}"
+        )
+        return {
+            "contents": [{"parts": [{"text": final_text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {"voice_name": voice}
+                    }
+                }
+            }
+        }
+
     else:
         return None
 
@@ -150,6 +187,8 @@ def generate_audio_endpoint():
         mode = data.get('mode', 'pure').strip()
         model_nickname = str(data.get('model_to_use', 'flash')).lower()
         debug = data.get('debug', False)
+        scene = data.get('scene', '').strip()
+        director_notes = data.get('director_notes', '').strip()
 
         if not text or not voice:
             return jsonify({"error": "Texto e voz obrigatorios"}), 400
@@ -162,9 +201,9 @@ def generate_audio_endpoint():
             model_fullname = "gemini-2.5-flash-preview-tts"
 
         # --- MONTAGEM DO PAYLOAD CONFORME MODO ---
-        payload = _build_payload(text, voice, custom_prompt, mode)
+        payload = _build_payload(text, voice, custom_prompt, mode, scene, director_notes)
         if not payload:
-            return jsonify({"error": f"Modo desconhecido: {mode}", "modos_disponiveis": ["pure","inline","inline_suffix","system","system_no_audio_config","chirp","voice_instruction","prefixed_narrate","delimiters"]}), 400
+            return jsonify({"error": f"Modo desconhecido: {mode}", "modos_disponiveis": ["pure","inline","inline_suffix","system","system_no_audio_config","chirp","voice_instruction","prefixed_narrate","delimiters","voice_director"]}), 400
 
         safety = [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
