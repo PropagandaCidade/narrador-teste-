@@ -15,10 +15,13 @@ FONEMAS_API_URL = os.environ.get(
 )
 
 _rules_cache = None
+_rules_cache_time = 0
+RULES_CACHE_TTL = 300
 
 def _load_rules():
-    global _rules_cache
-    if _rules_cache is not None:
+    global _rules_cache, _rules_cache_time
+    import time
+    if _rules_cache is not None and (time.time() - _rules_cache_time) < RULES_CACHE_TTL:
         return _rules_cache
     try:
         resp = httpx.get(FONEMAS_API_URL, timeout=10.0)
@@ -37,6 +40,7 @@ def _load_rules():
                         if s:
                             pr_map[s] = instruction["replace"]
             _rules_cache = pr_map
+            _rules_cache_time = time.time()
             logger.info(f"Regras foneticas carregadas: {len(pr_map)} entradas")
             return _rules_cache
     except Exception as e:
