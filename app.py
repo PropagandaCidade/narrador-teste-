@@ -13,6 +13,130 @@ CORS(app, expose_headers=['X-Model-Used'])
 def home():
     return "Worker TTS v3.0 - Test Matrix"
 
+def _build_payload(text, voice, custom_prompt, mode):
+    if mode == 'pure':
+        return {
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {"voice_name": voice}
+                    }
+                }
+            }
+        }
+
+    elif mode == 'inline':
+        final_text = f"[CONTEXTO: {custom_prompt}] {text}" if custom_prompt else text
+        return {
+            "contents": [{"parts": [{"text": final_text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {"voice_name": voice}
+                    }
+                }
+            }
+        }
+
+    elif mode == 'inline_suffix':
+        final_text = f"{text}\n\n[CONTEXTO: {custom_prompt}]" if custom_prompt else text
+        return {
+            "contents": [{"parts": [{"text": final_text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {"voice_name": voice}
+                    }
+                }
+            }
+        }
+
+    elif mode == 'system':
+        payload = {
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {"voice_name": voice}
+                    }
+                }
+            }
+        }
+        if custom_prompt:
+            payload["systemInstruction"] = {"parts": [{"text": custom_prompt}]}
+        return payload
+
+    elif mode == 'system_no_audio_config':
+        return {
+            "systemInstruction": {"parts": [{"text": custom_prompt}]},
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"]
+            }
+        }
+
+    elif mode == 'chirp':
+        return {
+            "contents": [{"parts": [{"text": f"[ESTILO: CHIRP HD] {text}"}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {"voice_name": voice}
+                    }
+                }
+            }
+        }
+
+    elif mode == 'voice_instruction':
+        final_text = f"{custom_prompt}\n\n{text}" if custom_prompt else text
+        return {
+            "contents": [{"parts": [{"text": final_text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {"voice_name": voice}
+                    }
+                }
+            }
+        }
+
+    elif mode == 'prefixed_narrate':
+        return {
+            "contents": [{"parts": [{"text": f"Narre o texto a seguir: {text}"}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {"voice_name": voice}
+                    }
+                }
+            }
+        }
+
+    elif mode == 'delimiters':
+        return {
+            "contents": [{"parts": [{"text": f"<<INICIO DA NARRACAO>> {text} <<FIM DA NARRACAO>>"}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {"voice_name": voice}
+                    }
+                }
+            }
+        }
+
+    else:
+        return None
+
+
 @app.route('/api/generate-audio', methods=['POST'])
 def generate_audio_endpoint():
     try:
@@ -29,6 +153,7 @@ def generate_audio_endpoint():
         custom_prompt = data.get('custom_prompt', '').strip()
         mode = data.get('mode', 'pure').strip()
         model_nickname = str(data.get('model_to_use', 'flash')).lower()
+        debug = data.get('debug', False)
 
         if not text or not voice:
             return jsonify({"error": "Texto e voz obrigatorios"}), 400
@@ -43,157 +168,31 @@ def generate_audio_endpoint():
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_fullname}:generateContent?key={api_key}"
 
         # --- MONTAGEM DO PAYLOAD CONFORME MODO ---
-        payload = None
-
-        if mode == 'pure':
-            # MODO 1: Texto puro, sem instrucao alguma
-            logger.info(f"MODO pure: texto puro, sem instrucao")
-            payload = {
-                "contents": [{"parts": [{"text": text}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {"voice_name": voice}
-                        }
-                    }
-                }
-            }
-
-        elif mode == 'inline':
-            # MODO 2: Instrucao DENTRO do texto (como era antes)
-            logger.info(f"MODO inline: instrucao concatenada no texto")
-            final_text = f"[CONTEXTO: {custom_prompt}] {text}" if custom_prompt else text
-            payload = {
-                "contents": [{"parts": [{"text": final_text}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {"voice_name": voice}
-                        }
-                    }
-                }
-            }
-
-        elif mode == 'inline_suffix':
-            # MODO 3: Instrucao DEPOIS do texto
-            logger.info(f"MODO inline_suffix: instrucao depois do texto")
-            final_text = f"{text}\n\n[CONTEXTO: {custom_prompt}]" if custom_prompt else text
-            payload = {
-                "contents": [{"parts": [{"text": final_text}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {"voice_name": voice}
-                        }
-                    }
-                }
-            }
-
-        elif mode == 'system':
-            # MODO 4: systemInstruction separada (testar se funciona em algum modelo)
-            logger.info(f"MODO system: tentando systemInstruction")
-            payload = {
-                "contents": [{"parts": [{"text": text}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {"voice_name": voice}
-                        }
-                    }
-                }
-            }
-            if custom_prompt:
-                payload["systemInstruction"] = {"parts": [{"text": custom_prompt}]}
-
-        elif mode == 'system_no_audio_config':
-            # MODO 5: systemInstruction SEM speechConfig (alguns modelos precisam)
-            logger.info(f"MODO system_no_audio_config: systemInstruction sem speechConfig")
-            payload = {
-                "systemInstruction": {"parts": [{"text": custom_prompt}]},
-                "contents": [{"parts": [{"text": text}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"]
-                }
-            }
-
-        elif mode == 'chirp':
-            # MODO 6: Estilo CHIRP (prefixo no texto)
-            logger.info(f"MODO chirp: prefixo estilo CHIRP")
-            final_text = f"[ESTILO: CHIRP HD] {text}"
-            payload = {
-                "contents": [{"parts": [{"text": final_text}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {"voice_name": voice}
-                        }
-                    }
-                }
-            }
-
-        elif mode == 'voice_instruction':
-            # MODO 7: Instrucao de voz DENTRO do texto como frase natural
-            logger.info(f"MODO voice_instruction: instrucao como frase natural")
-            final_text = f"{custom_prompt}\n\n{text}" if custom_prompt else text
-            payload = {
-                "contents": [{"parts": [{"text": final_text}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {"voice_name": voice}
-                        }
-                    }
-                }
-            }
-
-        elif mode == 'prefixed_narrate':
-            # MODO 8: Prefixo "Narre o texto a seguir:" antes do texto
-            logger.info(f"MODO prefixed_narrate: Narre o texto a seguir")
-            final_text = f"Narre o texto a seguir: {text}"
-            payload = {
-                "contents": [{"parts": [{"text": final_text}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {"voice_name": voice}
-                        }
-                    }
-                }
-            }
-
-        elif mode == 'delimiters':
-            # MODO 9: Texto entre delimitadores
-            logger.info(f"MODO delimiters: texto entre aspas/tags")
-            final_text = f"<<INICIO DA NARRACAO>> {text} <<FIM DA NARRACAO>>"
-            payload = {
-                "contents": [{"parts": [{"text": final_text}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {"voice_name": voice}
-                        }
-                    }
-                }
-            }
-
-        else:
+        payload = _build_payload(text, voice, custom_prompt, mode)
+        if not payload:
             return jsonify({"error": f"Modo desconhecido: {mode}", "modos_disponiveis": ["pure","inline","inline_suffix","system","system_no_audio_config","chirp","voice_instruction","prefixed_narrate","delimiters"]}), 400
 
-        payload["safetySettings"] = [
+        safety = [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": "BLOCK_NONE"}
         ]
+        payload["safetySettings"] = safety
+
+        if debug:
+            payload_preview = json.loads(json.dumps(payload))
+            return jsonify({
+                "debug": True,
+                "mode": mode,
+                "model": model_fullname,
+                "voice": voice,
+                "api_url": url.replace(api_key, "API_KEY_AQUI"),
+                "payload": payload_preview,
+                "payload_json": json.dumps(payload_preview, indent=2, ensure_ascii=False),
+                "instrucao": "Copie o 'payload' acima e cole no Google AI Studio (ou use curl com o payload + sua chave) para comparar o comportamento com o worker."
+            })
 
         logger.info(f"Modo={mode} | Modelo={model_fullname} | Voice={voice}")
 
