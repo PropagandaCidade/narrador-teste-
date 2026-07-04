@@ -9,9 +9,26 @@ logger = logging.getLogger("HiveWorker")
 app = Flask(__name__)
 CORS(app, expose_headers=['X-Model-Used'])
 
+PRONUNCIATION_MAP = {
+    "IDE": "Leia a palavra IDE como 'ide', com acento no I.",
+}
+
+
+def _apply_pronunciation_guide(text):
+    words_to_check = set()
+    for word in PRONUNCIATION_MAP:
+        pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
+        if pattern.search(text):
+            words_to_check.add(word)
+    if not words_to_check:
+        return text
+    instructions = " ".join(PRONUNCIATION_MAP[w] for w in words_to_check)
+    return f"{instructions} {text}"
+
+
 @app.route('/')
 def home():
-    return "Worker TTS v3.0 - Test Matrix"
+    return "Worker TTS v3.1 - Pronunciation Map Active"
 
 def _voice_profile(voice_name):
     profiles = {
@@ -199,6 +216,10 @@ def generate_audio_endpoint():
             model_fullname = "gemini-2.5-pro-preview-tts"
         else:
             model_fullname = "gemini-2.5-flash-preview-tts"
+
+        use_phonetic = data.get('phonetic', True)
+        if use_phonetic:
+            text = _apply_pronunciation_guide(text)
 
         # --- MONTAGEM DO PAYLOAD CONFORME MODO ---
         payload = _build_payload(text, voice, custom_prompt, mode, scene, director_notes)
