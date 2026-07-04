@@ -9,21 +9,46 @@ logger = logging.getLogger("HiveWorker")
 app = Flask(__name__)
 CORS(app, expose_headers=['X-Model-Used'])
 
-PRONUNCIATION_MAP = {
-    "IDE": "Importante: ignore a palavra IDEIA. A marca IDE se pronuncia IDE, com E aberto e tonica no I. Nunca leia como IDEIA.",
-}
+FONEMAS_API_URL = os.environ.get(
+    "FONEMAS_API_URL",
+    "https://propagandacidadeaudio.com.br/voice-hub/admin/fonemas/api.php"
+)
+
+_rules_cache = None
+
+def _load_rules():
+    global _rules_cache
+    if _rules_cache is not None:
+        return _rules_cache
+    try:
+        resp = httpx.get(FONEMAS_API_URL, timeout=10.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            gold = data.get("gold_rules", {})
+            pr_map = {}
+            for key, rule in gold.items():
+                if isinstance(rule, dict) and "replace" in rule:
+                    searches = rule.get("search", [])
+                    replacement = rule["replace"]
+                    for s in searches:
+                        if s:
+                            pr_map[s] = replacement
+                elif isinstance(rule, str):
+                    pr_map[key] = rule
+            _rules_cache = pr_map
+            logger.info(f"Regras foneticas carregadas: {len(pr_map)} entradas")
+            return _rules_cache
+    except Exception as e:
+        logger.warning(f"Falha ao carregar regras foneticas: {e}")
+    return {}
 
 
 def _apply_pronunciation_guide(text):
-    words_to_check = set()
-    for word in PRONUNCIATION_MAP:
-        pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
-        if pattern.search(text):
-            words_to_check.add(word)
-    if not words_to_check:
-        return text
-    instructions = " ".join(PRONUNCIATION_MAP[w] for w in words_to_check)
-    return f"{instructions} {text}"
+    rules = _load_rules()
+    for word, replacement in rules.items():
+        pattern = re.compile(re.escape(word), re.IGNORECASE)
+        text = pattern.sub(replacement, text)
+    return text
 
 
 @app.route('/')
