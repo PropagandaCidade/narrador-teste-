@@ -11,7 +11,7 @@ CORS(app, expose_headers=['X-Model-Used', 'X-Prompt-Tokens', 'X-Output-Tokens'])
 
 @app.route('/')
 def home():
-    return "Worker TTS Teste v1.0"
+    return "Worker TTS Teste v1.1 - systemInstruction"
 
 @app.route('/api/generate-audio', methods=['POST'])
 def generate_audio_endpoint():
@@ -27,12 +27,11 @@ def generate_audio_endpoint():
         text = data.get('text', '').strip()
         voice = str(data.get('voice', 'Kore')).capitalize()
         model_nickname = str(data.get('model_to_use', 'flash')).lower()
+        custom_prompt = data.get('custom_prompt', '').strip()
+        has_prompt = bool(custom_prompt)
 
         if not text or not voice:
             return jsonify({"error": "Texto e voz obrigatorios"}), 400
-
-        # Usar sempre o texto puro, sem concatenar custom_prompt
-        final_text = text
 
         if "3.1" in model_nickname:
             model_fullname = "gemini-3.1-flash-tts-preview"
@@ -41,12 +40,12 @@ def generate_audio_endpoint():
         else:
             model_fullname = "gemini-2.5-flash-preview-tts"
 
-        logger.info(f"Modelo: {model_fullname} | Texto: {len(final_text)} chars")
+        logger.info(f"Modelo: {model_fullname} | has_prompt={has_prompt} | Texto: {len(text)} chars")
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_fullname}:generateContent?key={api_key}"
 
         payload = {
-            "contents": [{"parts": [{"text": final_text}]}],
+            "contents": [{"parts": [{"text": text}]}],
             "generationConfig": {
                 "responseModalities": ["AUDIO"],
                 "speechConfig": {
@@ -65,6 +64,11 @@ def generate_audio_endpoint():
                 {"category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": "BLOCK_NONE"}
             ]
         }
+
+        # Adiciona systemInstruction APENAS se custom_prompt existir
+        if has_prompt:
+            payload["systemInstruction"] = {"parts": [{"text": custom_prompt}]}
+            logger.info(f"systemInstruction adicionado ({len(custom_prompt)} chars)")
 
         with httpx.Client(timeout=120.0) as client:
             res = client.post(url, json=payload)
