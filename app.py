@@ -46,7 +46,9 @@ def _load_rules():
 def _apply_pronunciation_guide(text):
     rules = _load_rules()
     for word, replacement in rules.items():
-        pattern = re.compile(re.escape(word), re.IGNORECASE)
+        if " " in word:
+            continue
+        pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
         text = pattern.sub(replacement, text)
     return text
 
