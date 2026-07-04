@@ -144,10 +144,6 @@ def generate_audio_endpoint():
         if not data:
             return jsonify({"error": "JSON invalido"}), 400
 
-        api_key = data.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            return jsonify({"error": "Chave Gemini ausente"}), 500
-
         text = data.get('text', '').strip()
         voice = str(data.get('voice', 'Kore')).capitalize()
         custom_prompt = data.get('custom_prompt', '').strip()
@@ -165,8 +161,6 @@ def generate_audio_endpoint():
         else:
             model_fullname = "gemini-2.5-flash-preview-tts"
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_fullname}:generateContent?key={api_key}"
-
         # --- MONTAGEM DO PAYLOAD CONFORME MODO ---
         payload = _build_payload(text, voice, custom_prompt, mode)
         if not payload:
@@ -182,17 +176,21 @@ def generate_audio_endpoint():
         payload["safetySettings"] = safety
 
         if debug:
-            payload_preview = json.loads(json.dumps(payload))
             return jsonify({
                 "debug": True,
                 "mode": mode,
                 "model": model_fullname,
                 "voice": voice,
-                "api_url": url.replace(api_key, "API_KEY_AQUI"),
-                "payload": payload_preview,
-                "payload_json": json.dumps(payload_preview, indent=2, ensure_ascii=False),
+                "payload": payload,
+                "payload_json": json.dumps(payload, indent=2, ensure_ascii=False),
                 "instrucao": "Copie o 'payload' acima e cole no Google AI Studio (ou use curl com o payload + sua chave) para comparar o comportamento com o worker."
             })
+
+        api_key = data.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            return jsonify({"error": "Chave Gemini ausente"}), 500
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_fullname}:generateContent?key={api_key}"
 
         logger.info(f"Modo={mode} | Modelo={model_fullname} | Voice={voice}")
 
