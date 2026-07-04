@@ -50,16 +50,18 @@ def _load_rules():
 
 def _apply_pronunciation_guide(text):
     rules = _load_rules()
-    instructions = []
+    found = []
     for word, instruction in rules.items():
         if " " in word:
             continue
         pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
         if pattern.search(text):
-            instructions.append(f"Importante: {instruction}")
-    if not instructions:
+            text = pattern.sub(f'"{word}"', text)
+            found.append(instruction)
+    if not found:
         return text
-    return f"{' '.join(instructions)} {text}"
+    preamble = "Leia exatamente como escrito, sem autocorrigir. " + " ".join(found)
+    return f"{preamble} {text}"
 
 
 @app.route('/')
